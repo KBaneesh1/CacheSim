@@ -67,18 +67,23 @@ void print_cachelines(cache * c, int cache_size){
 // This function implements the mock CPU loop that reads and writes data.
 void cpu_loop(int num_threads){
     // Initialize a CPU level cache that holds about 2 bytes of data.
+    omp_set_num_threads(num_threads);
+    #pragma omp parallel
+    {
     int cache_size = 2;
     cache * c = (cache *) malloc(sizeof(cache) * cache_size);
-    
+    int thread_num = omp_get_thread_num();
     // Read Input file
     FILE * inst_file = fopen("input_0.txt", "r");
     char inst_line[20];
     // Decode instructions and execute them.
-    while (fgets(inst_line, sizeof(inst_line), inst_file)){
+    while (fgets(inst_line, sizeof(inst_line), inst_file))
+    {
         decoded inst = decode_inst_line(inst_line);
         /*
          * Cache Replacement Algorithm
-         */
+        */
+        
         int hash = inst.address%cache_size;
         cache cacheline = *(c+hash);
         /*
@@ -109,6 +114,7 @@ void cpu_loop(int num_threads){
         }
     }
     free(c);
+    }
 }
 
 int main(int c, char * argv[]){
