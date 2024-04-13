@@ -61,22 +61,23 @@ byte * memory;
 // Decode instruction lines
 decoded decode_inst_line(char * buffer){
     decoded inst;
-    char inst_type[2];
+    char inst_type[3];
     sscanf(buffer, "%s", inst_type);
-    if(!strcmp(inst_type, "RD")){
+    if(strcmp(inst_type, "RD")==0){
         inst.type = 0;
         int addr = 0;
         sscanf(buffer, "%s %d", inst_type, &addr);
         inst.value = -1;
         inst.address = addr;
-    } else if(!strcmp(inst_type, "WR")){
-        inst.type = 1;
+    } else if(strcmp(inst_type, "WR")==0){
         int addr = 0;
         int val = 0;
         sscanf(buffer, "%s %d %d", inst_type, &addr, &val);
+        inst.type = 1;
         inst.address = addr;
         inst.value = val;
     }
+    // printf("instruction %s %d %d %d\n",inst_type,inst.type,inst.address,inst.value);
     return inst;
 }
 
@@ -110,6 +111,7 @@ void cpu_loop(int num_threads){
         cache * c = (cache *) malloc(sizeof(cache) * cache_size);
         int thread_num = omp_get_thread_num();
         // Read Input file
+        
         char filename[20];
         sprintf(filename, "input_%d.txt", thread_num);
         FILE * inst_file = fopen(filename, "r");
@@ -128,7 +130,7 @@ void cpu_loop(int num_threads){
                         /*
                         * Cache Replacement Algorithm
                         */
-                        
+                        // printf("%d %d %d\n",inst.type,inst.address,inst.value);
                         int hash = inst.address%cache_size;
                         cache cacheline = *(c+hash);
                         /*
@@ -148,6 +150,8 @@ void cpu_loop(int num_threads){
                             }
                             *(c+hash) = cacheline;
                         }
+                        // printf("%d\n",inst.type);
+                        printf("Thread %d: %s %d: %d\n", thread_num, inst.type == 0 ? "RD" : "WR", inst.address, cacheline.value);
                         switch(inst.type){
                             case 0:
                                 //Read Hit
@@ -175,7 +179,7 @@ void cpu_loop(int num_threads){
                                     }
 
                                 }   
-                                break;
+                               
                                 
                             }
                             else{
@@ -196,6 +200,7 @@ void cpu_loop(int num_threads){
                                 }
 
                             }
+                            break;
                             case 1:
                             {
                                 //Write Hit
@@ -269,7 +274,7 @@ void cpu_loop(int num_threads){
                                     for(int i=0;i<1000;i++);
                                     // copy from memory
 
-                                    cacheline.value = *(memory + inst.address);
+                                    // cacheline.value = *(memory + inst.address);
                                     // write the data 
                                     cacheline.value = inst.value;
                                     //change the state to modified
@@ -280,7 +285,6 @@ void cpu_loop(int num_threads){
                             }
                         }
                         for(int i=0;i<1000;i++);
-                        printf("Thread %d: %s %d: %d\n", thread_num, inst.type == 0 ? "RD" : "WR", inst.address, `.value);
                     }
                     instruction_finish = 1;
                     free(c);
