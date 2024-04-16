@@ -150,7 +150,7 @@ void cpu_loop(int num_threads){
                         // }
                         // printf("%d\n",inst.type);
                         // printf("Thread %d: %s %d: %d\n", thread_num, inst.type == 0 ? "RD" : "WR", inst.    , cacheline.value);
-                        print_cachelines(c,2);
+                        // print_cachelines(c,2);
                         switch(inst.type){
                             case 0:
                                 //Read Hit
@@ -212,8 +212,8 @@ void cpu_loop(int num_threads){
                                     {
                                         cacheline.cache_state = MODIFIED;
                                         cacheline.value = inst.value;
+                                        printf("changing state from Exclusive to shared in thread %d\n",thread_num);
                                     }
-                                    
                                     else if(cacheline.cache_state == SHARED)
                                     {
                                         cacheline.cache_state = MODIFIED;
@@ -274,23 +274,24 @@ void cpu_loop(int num_threads){
                                             }
                                     }
                                     //Remember to give time gap
-
+                                    cacheline.value = inst.value;
+                                    //change the state to modified
+                                    cacheline.cache_state = MODIFIED;
                                     // time gap
                                     for(int i=0;i<1000;i++);
                                     // copy from memory
 
                                     // cacheline.value = *(memory + inst.address);
                                     // write the data 
-                                    cacheline.value = inst.value;
-                                    //change the state to modified
-                                    cacheline.cache_state = MODIFIED;
+                                    
                                 }
                                 // printf("Writing to address %d: %d\n", cacheline.address, cacheline.value);
                                 break;
                             }
                         }
                         *(c+hash) = cacheline;
-
+                        print_cachelines(c,2,thread_num);
+                        print("\n");
                         printf("Thread %d: %d %d: %d\n", thread_num,inst.type, inst.address, cacheline.value);
                         for(int i=0;i<1000;i++);
                     }   
@@ -321,6 +322,7 @@ void cpu_loop(int num_threads){
                                                 *(memory + cacheline.address) = cacheline.value;
                                             }
                                             cacheline.cache_state = SHARED;
+                                            printf("changing to shared in thread:%d\n",thread_num);
                                             *(c+hash) = cacheline;
                                             omp_set_lock(&(locks_arr[to_resp]));
                                             data_comm[to_resp]->sender = thread_num;
@@ -381,6 +383,7 @@ void cpu_loop(int num_threads){
                                             *(memory + cacheline.address) = cacheline.value;
                                             cacheline.cache_state = INVALID;
                                         }
+                                        printf("changing to invalid in thread %d\n",thread_num);
                                     }
                                     *(c+hash) = cacheline;
 
@@ -392,6 +395,7 @@ void cpu_loop(int num_threads){
                                     cache cacheline = *(c+hash);
                                     cacheline.value = data_comm[thread_num]->value;
                                     cacheline.value = SHARED;
+                                    printf("changed to shared in thread = %d\n",thread_num);
                                     *(c+hash) = cacheline;
                                     read_no = 0;
                                     write_no = 0;
@@ -405,6 +409,7 @@ void cpu_loop(int num_threads){
                                         cacheline.address = data_comm[thread_num]->address;
                                         cacheline.value = *(memory+data_comm[thread_num]->address);
                                         cacheline.cache_state = EXCLUSIVE;
+                                        printf("changing to exclusive in thread %d\n",thread_num);
                                         read_no = 0;
                                     }
                                     else{
@@ -420,6 +425,7 @@ void cpu_loop(int num_threads){
                                         cacheline.value = *(memory+data_comm[thread_num]->address);
                                         cacheline.value = data_comm[thread_num]->value;
                                         cacheline.cache_state = MODIFIED;
+                                        printf("changing to modified in thread %d\n",thread_num);
                                         write_no = 0;
                                     }
                                     else{

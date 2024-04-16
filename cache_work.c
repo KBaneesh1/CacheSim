@@ -41,6 +41,7 @@ struct Bus{
     enum BusState BusState;
     byte address;
     byte value;
+    int done;
     enum cache_state cache_state;
 };
 typedef struct cache cache;
@@ -82,10 +83,10 @@ decoded decode_inst_line(char * buffer){
 }
 
 // Helper function to print the cachelines
-void print_cachelines(cache * c, int cache_size,int thread){
+void print_cachelines(cache * c, int cache_size,int thread_in){
     for(int i = 0; i < cache_size; i++){
         cache cacheline = *(c+i);
-        printf("Thread:%d, Address: %d, State: %d, Value: %d\n", thread,cacheline.address, cacheline.cache_state, cacheline.value);
+        printf("Thread:%d, Address: %d, State: %d, Value: %d\n", thread_in,cacheline.address, cacheline.cache_state, cacheline.value);
     }
 }
 
@@ -94,25 +95,32 @@ void print_cachelines(cache * c, int cache_size,int thread){
 void cpu_loop(int num_threads){
     // Initialize a CPU level cache that holds about 2 bytes of data.
     int memory_size = 24;
-    memory = (byte *) malloc(sizeof(byte) * memory_size);
+    memory = (byte *) calloc(memory_size,sizeof(byte));
     omp_lock_t locks_arr[num_threads];
-    Bus** data_comm = (Bus**)malloc(num_threads*sizeof(Bus*));
-
-    // Initialize all pointers to NULL
-    for (int i = 0; i < num_threads; ++i) {
-        data_comm[i] = NULL;
+    Bus *data_comm = (Bus*)calloc(num_threads,sizeof(Bus));
+    for(int i=0;i<num_threads;i++){
+        data_comm[i].done = 0;
     }
+    // Initialize all pointers to NULL
+    // for (int i = 0; i < num_threads; ++i) {
+    //     data_comm[i] = NULL;
+    // }
     for (int i=0; i<num_threads; i++)
         omp_init_lock(&(locks_arr[i]));
     omp_set_nested(1);
+    int instruction_finish = 0;
+
     #pragma omp parallel num_threads(num_threads) shared(memory,data_comm,locks_arr)
     {
-        int instruction_finish = 0;
         int cache_size = 2;
-        cache * c = (cache *) malloc(sizeof(cache) * cache_size);
+        cache * c = (cache *) calloc(cache_size,sizeof(cache) );
         int thread_num = omp_get_thread_num();
         // Read Input file
-
+        for(int i=0;i<cache_size;i++){
+            c[i].address = 0;
+            c[i].value = 0;
+            c[i].cache_state = INVALID;
+        }
         char filename[20];
         sprintf(filename, "input_%d.txt", thread_num);
         FILE * inst_file = fopen(filename, "r");
@@ -152,8 +160,9 @@ void cpu_loop(int num_threads){
                         // printf("%d\n",inst.type);
                         // printf("Thread %d: %s %d: %d\n", thread_num, inst.type == 0 ? "RD" : "WR", inst.    , cacheline.value);
                         // print_cachelines(c,2);
-                        switch(inst.type){
-                            case 0:
+                        switch(inst.type)
+                        {
+                            case 0:{
                             // printf("inside read hit\n");
                             //Read Hit
                             if(cacheline.address == inst.address)
@@ -170,41 +179,45 @@ void cpu_loop(int num_threads){
                                     {
                                         if(i != thread_num)
                                         {
-                                            Bus *temp_bus = (Bus*)malloc(sizeof(Bus));
-                                            temp_bus->sender = thread_num;
-                                            temp_bus->receiver = i;
-                                            temp_bus->BusState = RDM;
-                                            temp_bus->address = cacheline.address;
-                                            temp_bus->value = cacheline.value;
+                                            // Bus temp_bus = (Bus*)malloc(sizeof(Bus));
                                             omp_set_lock(&(locks_arr[i]));
-                                            data_comm[i] = temp_bus; 
+                                            data_comm[i].sender = thread_num;
+                                            data_comm[i].receiver = i;
+                                            data_comm[i].BusState = RDM;
+                                            data_comm[i].address = inst.address;
+                                            data_comm[i].value = inst.value;
+                                            data_comm[i].done = 1;
+                                            // data_comm[i] = temp_bus; 
                                             omp_unset_lock(&(locks_arr[i]));
                                         }
                                     }
-                                }       
+                                }  
+                                // break;     
                             }
-
                             else{
                                 // Read Miss
-                                printf("inside read missof thread:%d, addr:%d , value:%d\n", thread_num,inst.address,inst.value);
+                                printf("inside read miss of thread:%d, addr:%d , value:%d\n", thread_num,inst.address,inst.value);
 
                                 for(int i=0;i<num_threads;i++)
                                 {
                                     if(i != thread_num)
                                     {
-                                      Bus *temp_bus = (Bus*)malloc(sizeof(Bus));
+                                      
                                       omp_set_lock(&(locks_arr[i]));
-                                      temp_bus->sender = thread_num;
-                                      temp_bus->receiver = i;
-                                      temp_bus->BusState = RDM;
-                                      temp_bus->address = cacheline.address;
-                                      temp_bus->value = cacheline.value;
-                                      data_comm[i] = temp_bus; 
-
+                                      data_comm[i].sender = thread_num;
+                                      data_comm[i].receiver = i;
+                                      data_comm[i].BusState = RDM;
+                                      data_comm[i].address = inst.address;
+                                      data_comm[i].value = -1;
+                                      data_comm[i].done = 1;
+                                    //   data_comm[i] = temp_bus; 
                                       omp_unset_lock(&(locks_arr[i]));
                                     }
                                 }
 
+                                // break;
+                            
+                                }
                                 break;
                             }
                             case 1:
@@ -229,14 +242,15 @@ void cpu_loop(int num_threads){
                                         {
                                             if(i != thread_num)
                                             {
-                                              Bus *temp_bus = (Bus*)malloc(sizeof(Bus));
+                                            //   Bus *temp_bus = (Bus*)malloc(sizeof(Bus));
                                               omp_set_lock(&(locks_arr[i]));
-                                              temp_bus->sender = thread_num;
-                                              temp_bus->receiver = i;
-                                              temp_bus->BusState = INVALIDATE;
-                                              temp_bus->address = cacheline.address;
-                                              temp_bus->value = cacheline.value;
-                                              data_comm[i] = temp_bus; 
+                                              data_comm[i].sender = thread_num;
+                                              data_comm[i].receiver = i;
+                                              data_comm[i].BusState = INVALIDATE;
+                                              data_comm[i].address = cacheline.address;
+                                              data_comm[i].value = cacheline.value;
+                                              data_comm[i].done = 1;
+                                            //   data_comm[i] = temp_bus; 
                                               omp_unset_lock(&(locks_arr[i]));
                                             }
                                         }
@@ -250,11 +264,11 @@ void cpu_loop(int num_threads){
                                         //     {
                                         //       Bus *temp_bus = (Bus*)malloc(sizeof(Bus));
                                         //       omp_set_lock(&(locks_arr[i]));
-                                        //       temp_bus->sender = thread_num;
-                                        //       temp_bus->receiver = i;
-                                        //       temp_bus->BusState = WRM;
-                                        //       temp_bus->address = cacheline.address;
-                                        //       temp_bus->value = cacheline.value;
+                                        //       data_comm[i].sender = thread_num;
+                                        //       data_comm[i].receiver = i;
+                                        //       data_comm[i].BusState = WRM;
+                                        //       data_comm[i].address = cacheline.address;
+                                        //       data_comm[i].value = cacheline.value;
                                         //       data_comm[i] = temp_bus; 
 
                                         //       omp_unset_lock(&(locks_arr[i]));
@@ -263,19 +277,20 @@ void cpu_loop(int num_threads){
                                         cacheline.address = inst.address;
                                         cacheline.value = inst.value;
                                         cacheline.cache_state = MODIFIED;
-                                        cacheline.value = inst.value;
+                                      
                                         for(int i=0;i<num_threads;i++)
                                         {
                                             if(i != thread_num)
                                             {
-                                              Bus *temp_bus = (Bus*)malloc(sizeof(Bus));
+                                            //   Bus *temp_bus = (Bus*)malloc(sizeof(Bus));
                                               omp_set_lock(&(locks_arr[i]));
-                                              temp_bus->sender = thread_num;
-                                              temp_bus->receiver = i;
-                                              temp_bus->BusState = INVALIDATE;
-                                              temp_bus->address = cacheline.address;
-                                              temp_bus->value = cacheline.value;
-                                              data_comm[i] = temp_bus; 
+                                              data_comm[i].sender = thread_num;
+                                              data_comm[i].receiver = i;
+                                              data_comm[i].BusState = INVALIDATE;
+                                              data_comm[i].address = cacheline.address;
+                                              data_comm[i].value = cacheline.value;
+                                              data_comm[i].done = 1;
+                                            //   data_comm[i] = temp_bus; 
                                               omp_unset_lock(&(locks_arr[i]));
                                             }
                                         }
@@ -287,8 +302,9 @@ void cpu_loop(int num_threads){
                                 {
                                     //Write Miss
                                   printf("inside write miss  thread:%d , addr : %d , value:%d \n",thread_num,inst.address,inst.value);
-                                  if(cacheline.cache_state == MODIFIED || cacheline.cache_state == SHARED)
+                                  if(cacheline.cache_state!=INVALID)
                                         *(memory+cacheline.address) = cacheline.value;
+
                                   cacheline.address = inst.address;
                                   cacheline.value = inst.value;
                                   //change the state to modified
@@ -302,14 +318,15 @@ void cpu_loop(int num_threads){
                                             // printf("hi inside lock %d %d\n",i,thread_num);
                                             if(i != thread_num)
                                             {
-                                              Bus *temp_bus =(Bus*)malloc(sizeof(Bus));
+                                            //   Bus *temp_bus =(Bus*)malloc(sizeof(Bus));
                                               omp_set_lock(&(locks_arr[i]));
-                                              temp_bus->sender = thread_num;
-                                              temp_bus->receiver = i;
-                                              temp_bus->BusState = INVALIDATE;
-                                              temp_bus->address = cacheline.address;
-                                              temp_bus->value = cacheline.value;
-                                              data_comm[i] = temp_bus;
+                                              data_comm[i].sender = thread_num;
+                                              data_comm[i].receiver = i;
+                                              data_comm[i].BusState = INVALIDATE;
+                                              data_comm[i].address = inst.address;
+                                              data_comm[i].value = inst.value;
+                                              data_comm[i].done = 1;
+                                            //   data_comm[i] = temp_bus;
                                               omp_unset_lock(&(locks_arr[i]));
                                             }
                                       // printf("ending lock\n");
@@ -318,7 +335,7 @@ void cpu_loop(int num_threads){
                                     // printf("after set lock");
                                     //Remember to give time gap
                                     // time gap
-                                    for(int i=0;i<1000;i++);
+                                    for(int i=0;i<10000;i++);
                                     // copy from memory
 
                                     // cacheline.value = *(memory + inst.address);
@@ -332,60 +349,69 @@ void cpu_loop(int num_threads){
                         // *(c+hash) = cacheline;
                         printf("Thread %d: %s %d: %d State = %d\n", thread_num,inst.type?"WR" 
  :"RD", inst.address, cacheline.value,cacheline.cache_state);
-                        print_cachelines(c, cache_size,thread_num);
-                        printf("\n");
+                        printf("--\n");
+                        print_cachelines(c,cache_size,thread_num);
+                        printf("--\n");
                         for(int i=0;i<1000;i++);
-                    }   
-                    instruction_finish = 1;
+                    }
+                    // #pragma omp barrier
+                    instruction_finish++;
+                    printf("inst finish = %d\n",instruction_finish);
                     free(c);
                 }
                 #pragma omp section
                 {
                     int read_no = 0;
                     int write_no = 0;
-                    while(!instruction_finish){
+                    while(instruction_finish<2){
 
-                        if(data_comm[thread_num]!=NULL){
-                            switch(data_comm[thread_num]->BusState)
+                        if(data_comm[thread_num].done){
+                            omp_set_lock(&locks_arr[thread_num]);
+                            switch(data_comm[thread_num].BusState)
                             {
                                 case RDM:
                                 {
-                                    int hash = data_comm[thread_num]->address%cache_size;
-                                    cache cacheline = *(c+hash);
-                                    int to_resp = data_comm[thread_num]->sender;
+                                    printf("Inside 2nd section read miss\n");
+                                    int hash = data_comm[thread_num].address%cache_size;
+                                    cache line_cache = *(c+hash);
+                                    int to_resp = data_comm[thread_num].sender;
 
                                     // If the data is in neighboring caches
-                                    if(cacheline.address == data_comm[thread_num]->address){
-                                        if(data_comm[to_resp]==NULL || (data_comm[to_resp]!=NULL && data_comm[to_resp]->BusState==NODATARDM))
+                                    if(line_cache.address == data_comm[thread_num].address){
+                                        //
+                                        if(data_comm[to_resp].done==0 || (data_comm[to_resp].done==1 && data_comm[to_resp].BusState==NODATARDM))
                                         {
-                                            if(cacheline.cache_state == MODIFIED){
-                                                *(memory + cacheline.address) = cacheline.value;
-                                            }
-                                            cacheline.cache_state = SHARED;
-                                            *(c+hash) = cacheline;
-                                            Bus *temp_bus = (Bus*)malloc(sizeof(Bus));
+                                            // if(line_cache.cache_state == MODIFIED){
+                                            //     *(memory + line_cache.address) = line_cache.value;
+                                            // }
+                                            printf("Data found in cache in 2nd thread\n");
+                                            line_cache.cache_state = SHARED;
+                                            *(c+hash) = line_cache;
+                                            // Bus *temp_bus = (Bus*)malloc(sizeof(Bus));
                                             omp_set_lock(&(locks_arr[to_resp]));
-                                            temp_bus->sender = thread_num;
-                                            temp_bus->receiver = to_resp;
-                                            temp_bus->BusState = DATARESP;
-                                            temp_bus->address = cacheline.address;
-                                            temp_bus->value = cacheline.value;
-                                            temp_bus->BusState = SHARED;
-                                            data_comm[to_resp] = temp_bus;
+                                            data_comm[to_resp].sender = thread_num;
+                                            data_comm[to_resp].receiver = to_resp;
+                                            data_comm[to_resp].BusState = DATARESP;
+                                            data_comm[to_resp].address = line_cache.address;
+                                            data_comm[to_resp].value = line_cache.value;
+                                            data_comm[to_resp].BusState = SHARED;
+                                            data_comm[to_resp].done = 1;
+                                            // data_comm[to_resp] = temp_bus;
                                             omp_unset_lock(&(locks_arr[to_resp]));
                                         }
                                     }
                                     else{
-                                        if(data_comm[to_resp]==NULL || (data_comm[to_resp]!=NULL && data_comm[to_resp]->BusState==NODATARDM))
+                                        if(data_comm[to_resp].done==0 || (data_comm[to_resp].done==1 && data_comm[to_resp].BusState==NODATARDM))
                                         {
-                                        printf("sending found data from %d to %d\n", thread_num, to_resp);
-                                          Bus *temp_bus = (Bus*)malloc(sizeof(Bus));
+                                        printf("sending Not Found data MSG from %d to %d\n", thread_num, to_resp);
+                                        //   Bus *temp_bus = (Bus*)malloc(sizeof(Bus));
                                           omp_set_lock(&(locks_arr[to_resp]));
-                                          temp_bus->sender = thread_num;
-                                          temp_bus->receiver = to_resp;
-                                          temp_bus->BusState = NODATARDM;
-                                          temp_bus->address = cacheline.address;
-                                          data_comm[to_resp] = temp_bus;
+                                          data_comm[to_resp].sender = thread_num;
+                                          data_comm[to_resp].receiver = to_resp;
+                                          data_comm[to_resp].BusState = NODATARDM;
+                                          data_comm[to_resp].address = data_comm[thread_num].address;
+                                          data_comm[to_resp].done = 1;
+                                        //   data_comm[to_resp] = temp_bus;
                                           omp_unset_lock(&(locks_arr[to_resp]));
                                         }
                                     }
@@ -394,80 +420,105 @@ void cpu_loop(int num_threads){
                                 }
 
                                 case INVALIDATE: {
-                                    int hash = data_comm[thread_num]->address%cache_size;
-                                    cache cacheline = *(c+hash);
-                                    if(cacheline.address == data_comm[thread_num]->address){
-                                        cacheline.cache_state = INVALID;
+                                    //
+                                    int hash = data_comm[thread_num].address%cache_size;
+                                    cache line_cache = *(c+hash);
+                                    if(line_cache.address == data_comm[thread_num].address){
+                                        line_cache.cache_state = INVALID;
                                     }
-                                    *(c+hash) = cacheline;
+                                    *(c+hash) = line_cache;
                                     break;
+                                    //
                                 }
 
                                 // case WRM : {
-                                //     int hash = data_comm[thread_num]->address%cache_size;
-                                //     cache cacheline = *(c+hash);
-                                //     int to_resp = data_comm[thread_num]->sender;
-                                //     // if(cacheline.address != data_comm[thread_num]->address){
-                                //     //     if(data_comm[to_resp]==NULL || (data_comm[to_resp]!=NULL && data_comm[to_resp]->BusState==NODATAWRM))
+                                //     int hash = data_comm[thread_num].address%cache_size;
+                                //     cache line_cache = *(c+hash);
+                                //     int to_resp = data_comm[thread_num].sender;
+                                //     // if(line_cache.address != data_comm[thread_num].address){
+                                //     //     if(data_comm[to_resp]==NULL || (data_comm[to_resp]!=NULL && data_comm[to_resp].BusState==NODATAWRM))
                                 //     //     {
                                 //     //       Bus *temp_bus = (Bus*)malloc(sizeof(Bus));
                                 //     //       omp_set_lock(&(locks_arr[to_resp]));
-                                //     //       temp_bus->sender = thread_num;
-                                //     //       temp_bus->receiver = to_resp;
-                                //     //       temp_bus->BusState = NODATAWRM  ;
-                                //     //       temp_bus->address = cacheline.address;
+                                //     //       data_comm[i].sender = thread_num;
+                                //     //       data_comm[i].receiver = to_resp;
+                                //     //       data_comm[i].BusState = NODATAWRM  ;
+                                //     //       data_comm[i].address = line_cache.address;
                                 // //     //       data_comm[to_resp] = temp_bus;
                                 // //     //       omp_unset_lock(&(locks_arr[to_resp]));
                                 // //     //     }
                                 // //     }
                                 //     else{
-                                //         if(cacheline.cache_state==SHARED || cacheline.cache_state==EXCLUSIVE){
-                                //             cacheline.cache_state = INVALID;
+                                //         if(line_cache.cache_state==SHARED || line_cache.cache_state==EXCLUSIVE){
+                                //             line_cache.cache_state = INVALID;
                                 //         }
-                                //         else if(cacheline.cache_state == MODIFIED)
+                                //         else if(line_cache.cache_state == MODIFIED)
                                 //         {
-                                //             *(memory + cacheline.address) = cacheline.value;
-                                //             cacheline.cache_state = INVALID;
+                                //             *(memory + line_cache.address) = line_cache.value;
+                                //             line_cache.cache_state = INVALID;
                                 //         }
                                 //     }
-                                //     *(c+hash) = cacheline;
+                                //     *(c+hash) = line_cache;
 
                                 //     break;
 
                                 // }
                                 case DATARESP : {
-                                    int hash = data_comm[thread_num]->address%cache_size;
-                                    cache cacheline = *(c+hash);
-                                    cacheline.value = data_comm[thread_num]->value;
-                                    cacheline.value = SHARED;
-                                    *(c+hash) = cacheline;
+                                    //
+                                    int hash = data_comm[thread_num].address%cache_size;
+                                    cache line_cache = *(c+hash);
+                                    if(line_cache.address!=data_comm[thread_num].address){
+                                        if(line_cache.cache_state!=INVALID){
+                                            *(memory+line_cache.address) = line_cache.value;
+                                        }
+                                    }
+                                    line_cache.address = data_comm[thread_num].address;
+                                    line_cache.value = data_comm[thread_num].value;
+                                    line_cache.value = SHARED;
+                                    *(c+hash) = line_cache;
                                     read_no = 0;
+                                    //
                                     break;
                                 }
                                 case NODATARDM : {
                                     // cases for no data in neighboring caches for RDM 
                                     read_no++;
+                                    printf("Inisde NORDM and read_no = %d\n",read_no);
                                     if(read_no>=1){
-                                        printf("inside no data RDM");
-                                        int hash = data_comm[thread_num]->address%cache_size;
-                                        cache cacheline = *(c+hash);
-                                        *(memory+cacheline.address) = cacheline.value;
-                                        cacheline.address = data_comm[thread_num]->address;
-                                        cacheline.value = *(memory+data_comm[thread_num]->address);
-                                        cacheline.cache_state = EXCLUSIVE;
+                                        printf("inside no data RDM\n");
+                                        //
+                                        print_cachelines(c,2,thread_num);
+                                        printf("in NODATARDM , cache addr:%d , value = %d\n , memory = %d\n"    ,data_comm[thread_num].address,data_comm[thread_num].value,*(memory+data_comm[thread_num].address));
+                                        int hash = data_comm[thread_num].address%cache_size;
+                                        cache line_cache = *(c+hash);
+                                        // printf("cache line , address = %d , value = %d , state = %d\n",line_cache.address,line_cache.value,line_cache.cache_state);
+                                        printf("checkpoint 1\n");
+                                        if(line_cache.address!=0)
+                                        {
+                                            if(line_cache.cache_state!=INVALID)
+                                                *(memory+line_cache.address) = line_cache.value;
+                                        }
+                                        line_cache.address = data_comm[thread_num].address;
+                                        printf("checkpoint 2\n");
+                                        line_cache.value = *(memory+data_comm[thread_num].address);
+
+                                        printf("memory in = %d and value = %d\n",data_comm[thread_num].address,*(memory+data_comm[thread_num].address));
+                                        line_cache.cache_state = EXCLUSIVE;
+                                        *(c+hash) = line_cache;
                                         read_no = 0;
+                                        // omp_unset_lock(&(locks_arr[thread_num]));
                                     }
                                     
                                     break;
                                 }
                                 // case NODATAWRM : {
                                 //     if( write_no == 3){
-                                //         int hash = data_comm[thread_num]->address%cache_size;
-                                //         cache cacheline = *(c+hash);
-                                //         cacheline.address = data_comm[thread_num]->address;
-                                //         cacheline.value = *(memory+data_comm[thread_num]->address);
-                                //         cacheline.value = data_comm[thread_num]->value;
-                                //         cacheline.cache_state = MODIFIED;
+                                //         int hash = data_comm[thread_num].address%cache_size;
+                                //         cache line_cache = *(c+hash);
+                                //         line_cache.address = data_comm[thread_num].address;
+                                //         line_cache.value = *(memory+data_comm[thread_num].address);
+                                //         line_cache.value = data_comm[thread_num].value;
+                                //         line_cache.cache_state = MODIFIED;
                                 //         write_no = 0;
                                 //     }
                                 //     else{
@@ -476,15 +527,22 @@ void cpu_loop(int num_threads){
                                 //     break;
                                 // }
                             }
-                            omp_set_lock(&locks_arr[thread_num]);
-                            data_comm[thread_num] = NULL;
-                            omp_unset_lock(&locks_arr[thread_num]);
+                            // omp_set_lock(&locks_arr[thread_num]);
+                            data_comm[thread_num].done = 0;
+                            // omp_unset_lock(&locks_arr[thread_num]);
+                        // print_line_caches(c, cache_size,thread_num);
+                        // printf("\n");
+                        omp_unset_lock(&locks_arr[thread_num]);
                         }
 
                     }
                 }
             }
         }
+        #pragma omp barrier
+        printf("----------------------------------------\n");
+        print_cachelines(c,2,thread_num);
+
     }
 }
 
