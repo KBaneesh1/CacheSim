@@ -163,7 +163,7 @@ void cpu_loop(int num_threads){
                                 else{
                                     //INVALID READ HIT
                                     // SAME AS READ MISS
-                                    printf("Read Hit Invalidate thread%d , addr:%d , value:%d\n",thread_num,inst.address,inst.value);
+                                    // printf("Read Hit Invalidate thread%d , addr:%d , value:%d\n",thread_num,inst.address,inst.value);
                                     for(int i=0;i<num_threads;i++)
                                     {
                                         if(i != thread_num)
@@ -185,7 +185,7 @@ void cpu_loop(int num_threads){
                             }
                             else{
                                 // Read Miss
-                                printf("inside read miss of thread:%d, addr:%d , value:%d\n", thread_num,inst.address,inst.value);
+                                // printf("inside read miss of thread:%d, addr:%d , value:%d\n", thread_num,inst.address,inst.value);
 
                                 for(int i=0;i<num_threads;i++)
                                 {
@@ -215,7 +215,7 @@ void cpu_loop(int num_threads){
 
                                 if(cacheline.address == inst.address)
                                 {
-                                  printf("inside write hit ,thread:%d , addr:%d , value:%d\n",thread_num,inst.address,inst.value);
+                                //   printf("inside write hit ,thread:%d , addr:%d , value:%d\n",thread_num,inst.address,inst.value);
 
                                     if(cacheline.cache_state == EXCLUSIVE)
                                     {
@@ -246,7 +246,7 @@ void cpu_loop(int num_threads){
                                     }
                                     else if(cacheline.cache_state == INVALID)
                                     {
-                                        printf("inside write hit invalidate, thread:%d addr:%d , value:%d\n",thread_num,inst.address,inst.value);
+                                        // printf("inside write hit invalidate, thread:%d addr:%d , value:%d\n",thread_num,inst.address,inst.value);
 
                                         cacheline.address = inst.address;
                                         cacheline.value = inst.value;
@@ -275,7 +275,7 @@ void cpu_loop(int num_threads){
                                 else
                                 {
                                     //Write Miss
-                                  printf("inside write miss  thread:%d , addr : %d , value:%d \n",thread_num,inst.address,inst.value);
+                                //   printf("inside write miss  thread:%d , addr : %d , value:%d \n",thread_num,inst.address,inst.value);
                                   if(cacheline.cache_state!=INVALID)
                                         *(memory+cacheline.address) = cacheline.value;
 
@@ -317,20 +317,20 @@ void cpu_loop(int num_threads){
                             }
 
                         }
-                        sleep(0.2);
+                        // sleep(0.2);
                         // *(c+hash) = cacheline;
                         printf("Thread %d: %s %d: %d State = %d\n", thread_num,inst.type?"WR" 
  :"RD", inst.address, cacheline.value,cacheline.cache_state);
-                        printf("--\n");
-                        print_cachelines(c,cache_size,thread_num);
-                        printf("--\n");
+                        // printf("--\n");
+                        // print_cachelines(c,cache_size,thread_num);
+                        // printf("--\n");
                         for(int i=0;i<1000;i++);
                     }
                     // #pragma omp barrier
                     omp_set_lock(&inst_lock);
                     instruction_finish++;
                     omp_unset_lock(&inst_lock);
-                    printf("inst finish = %d\n",instruction_finish);
+                    // printf("inst finish = %d\n",instruction_finish);
 
                 }
                 #pragma omp section
@@ -358,7 +358,7 @@ void cpu_loop(int num_threads){
                                             // if(line_cache.cache_state == MODIFIED){
                                             //     *(memory + line_cache.address) = line_cache.value;
                                             // }
-                                            printf("Data found in cache in 2nd thread\n");
+                                            // printf("Data found in cache in 2nd thread\n");
                                             line_cache.cache_state = SHARED;
                                             *(c+hash) = line_cache;
                                             // Bus *temp_bus = (Bus*)malloc(sizeof(Bus));
@@ -373,15 +373,15 @@ void cpu_loop(int num_threads){
                                             // data_comm[to_resp] = temp_bus;
                                             omp_unset_lock(&(locks_arr[to_resp]));
                                         }
-                                        printf("Inside  read miss and neighbors have data\n");
-                                        print_cachelines(c,2,thread_num);
+                                        // printf("Inside  read miss and neighbors have data\n");
+                                        // print_cachelines(c,2,thread_num);
 
 
                                     }
                                     else{
                                         if(data_comm[to_resp].done==0 || (data_comm[to_resp].done==1 && data_comm[to_resp].BusState==NODATARDM))
                                         {
-                                            printf("Data not found in neighboring caches\n");
+                                            // printf("Data not found in neighboring caches\n");
                                         //   Bus *temp_bus = (Bus*)malloc(sizeof(Bus));
                                           omp_set_lock(&(locks_arr[to_resp]));
                                           data_comm[to_resp].sender = thread_num;
@@ -391,8 +391,8 @@ void cpu_loop(int num_threads){
                                           data_comm[to_resp].done = 1;
                                         //   data_comm[to_resp] = temp_bus;
                                           omp_unset_lock(&(locks_arr[to_resp]));
-                                        printf("sending Not Found data RDM from %d to %d\n", thread_num, to_resp);
-                                        print_cachelines(c,2,thread_num);
+                                        // printf("sending Not Found data RDM from %d to %d\n", thread_num, to_resp);
+                                        // print_cachelines(c,2,thread_num);
                                         }
 
                                     }
@@ -409,8 +409,8 @@ void cpu_loop(int num_threads){
                                         line_cache.cache_state = INVALID;
                                     }
                                     *(c+hash) = line_cache;
-                                    printf("Invalid in bus\n");
-                                    print_cachelines(c,2,thread_num);
+                                    // printf("Invalid in bus\n");
+                                    // print_cachelines(c,2,thread_num);
                                     break;
 
                                 }
@@ -429,22 +429,22 @@ void cpu_loop(int num_threads){
                                     line_cache.value = SHARED;
                                     *(c+hash) = line_cache;
                                     read_no = 0;
-                                    printf("received data response for thread %d\n",thread_num);
-                                    print_cachelines(c,2,thread_num);
+                                    // printf("received data response for thread %d\n",thread_num);
+                                    // print_cachelines(c,2,thread_num);
                                     //
                                     break;
                                 }
                                 case NODATARDM : {
                                     // cases for no data in neighboring caches for RDM 
                                     read_no++;
-                                    printf("In No DATA\n");
-                                    print_cachelines(c,2,thread_num);
+                                    // printf("In No DATA\n");
+                                    // print_cachelines(c,2,thread_num);
                                     // printf("Inisde NORDM and read_no = %d\n",read_no);
                                     if(read_no>=1){
                                         // printf("inside no data RDM\n");
                                         //
                                         // print_cachelines(c,2,thread_num);
-                                        printf("in NODATARDM , cache addr:%d , value = %d\n , memory = %d\n"    ,data_comm[thread_num].address,data_comm[thread_num].value,*(memory+data_comm[thread_num].address));
+                                        // printf("in NODATARDM , cache addr:%d , value = %d\n , memory = %d\n"    ,data_comm[thread_num].address,data_comm[thread_num].value,*(memory+data_comm[thread_num].address));
                                         int hash = data_comm[thread_num].address%cache_size;
                                         cache line_cache = *(c+hash);
                                         // printf("cache line , address = %d , value = %d , state = %d\n",line_cache.address,line_cache.value,line_cache.cache_state);
@@ -462,8 +462,8 @@ void cpu_loop(int num_threads){
                                         line_cache.cache_state = EXCLUSIVE;
                                         *(c+hash) = line_cache;
                                         read_no = 0;
-                                        printf("No data received\n");
-                                        print_cachelines(c,2,thread_num);
+                                        // printf("No data received\n");
+                                        // print_cachelines(c,2,thread_num);
                                         // omp_unset_lock(&(locks_arr[thread_num]));
                                     }
 
@@ -477,7 +477,7 @@ void cpu_loop(int num_threads){
                         // print_line_caches(c, cache_size,thread_num);
                         // printf("\n");
                         omp_unset_lock(&locks_arr[thread_num]);
-                        sleep(0.2);
+                        // sleep(0.2);
                         }
                         // printf("hi\n");
                         omp_set_lock(&inst_lock);
@@ -491,8 +491,8 @@ void cpu_loop(int num_threads){
             }
         }
         #pragma omp barrier
-        printf("----------------------------------------\n");
-        print_cachelines(c,2,thread_num);
+        // printf("----------------------------------------\n");
+        // print_cachelines(c,2,thread_num);
         free(c);
 
     }
